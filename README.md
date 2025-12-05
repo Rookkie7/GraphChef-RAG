@@ -8,7 +8,7 @@
 
 ## 项目完整演示截图
 
-![项目主页](images/Project_DENO.png)
+![项目主页](images/Project_DEMO.png)
 
 
 ## 核心特性
