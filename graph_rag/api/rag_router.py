@@ -1,8 +1,6 @@
-
 # api/rag_router.py
 """
-唯一的API路由文件 - 同步版本
-添加知识库管理API
+唯一的API路由文件 - 异步版本
 """
 
 import time
@@ -14,6 +12,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import sys
 import os
+import asyncio
 
 # 添加这行 - 设置项目根目录
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -35,9 +34,9 @@ class KnowledgeBaseRequest(BaseModel):
     force_rebuild: bool = False
 
 
-# 健康检查 - 改为同步
+# 健康检查 - 改为异步
 @router.get("/health")
-def health_check(system=Depends(get_rag_system_dependency)):
+async def health_check(system=Depends(get_rag_system_dependency)):
     """健康检查"""
     return {
         "status": "healthy",
@@ -47,9 +46,9 @@ def health_check(system=Depends(get_rag_system_dependency)):
     }
 
 
-# 知识库状态查询
+# 知识库状态查询 - 改为异步
 @router.get("/knowledge-base/status")
-def get_knowledge_base_status(system=Depends(get_rag_system_dependency)):
+async def get_knowledge_base_status(system=Depends(get_rag_system_dependency)):
     """获取知识库状态"""
     try:
         status_info = system.get_knowledge_base_status()
@@ -65,14 +64,14 @@ def get_knowledge_base_status(system=Depends(get_rag_system_dependency)):
         )
 
 
-# 构建/加载知识库
+# 构建/加载知识库 - 改为异步
 @router.post("/knowledge-base/build")
-def build_knowledge_base(
+async def build_knowledge_base(
         request: KnowledgeBaseRequest = None,
         system=Depends(get_rag_system_dependency)
 ):
     """
-    手动构建或加载知识库
+    手动构建或加载知识库 - 异步版本
     """
     if request is None:
         request = KnowledgeBaseRequest(force_rebuild=False)
@@ -80,8 +79,16 @@ def build_knowledge_base(
     logger.info(f"构建知识库请求: force_rebuild={request.force_rebuild}")
 
     try:
-        # 构建知识库
-        result = system.load_or_build_knowledge_base(force_rebuild=request.force_rebuild)
+        # 注意：这里需要将同步的构建操作放到线程池中执行，避免阻塞事件循环
+        import concurrent.futures
+
+        def sync_build():
+            return system.load_or_build_knowledge_base(force_rebuild=request.force_rebuild)
+
+        # 使用线程池执行同步操作
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(sync_build)
+            result = future.result()
 
         return {
             "success": True,
@@ -100,9 +107,9 @@ def build_knowledge_base(
         )
 
 
-# 卸载知识库
+# 卸载知识库 - 改为异步
 @router.post("/knowledge-base/unload")
-def unload_knowledge_base(system=Depends(get_rag_system_dependency)):
+async def unload_knowledge_base(system=Depends(get_rag_system_dependency)):
     """卸载知识库"""
     try:
         result = system.unload_knowledge_base()
@@ -118,15 +125,14 @@ def unload_knowledge_base(system=Depends(get_rag_system_dependency)):
         )
 
 
-# 问答接口 - 改为同步
+# 问答接口 - 改为异步
 @router.post("/ask")
-def ask_question(
+async def ask_question(
         request: QuestionRequest,
         system=Depends(get_rag_system_dependency)
 ):
     """
-    问答接口 - 同步版本
-    直接调用原有的 ask_question_with_routing 方法
+    问答接口 - 异步版本
     """
     # 检查知识库是否已加载
     if not system.knowledge_base_loaded:
@@ -151,12 +157,19 @@ def ask_question(
     start_time = time.time()
 
     try:
-        # 直接调用原有的同步方法！
-        answer, analysis = system.ask_question_with_routing(
-            question=request.question,
-            stream=False,  # 非流式
-            explain_routing=request.explain
-        )
+        # 使用线程池执行同步的问答操作
+        import concurrent.futures
+
+        def sync_ask():
+            return system.ask_question_with_routing(
+                question=request.question,
+                stream=False,  # 非流式
+                explain_routing=request.explain
+            )
+
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(sync_ask)
+            answer, analysis = future.result()
 
         processing_time = time.time() - start_time
 
@@ -190,12 +203,92 @@ def ask_question(
         )
 
 
+# 流式问答接口 - 异步版本
+@router.post("/ask/stream")
+async def ask_question_stream(
+        request: QuestionRequest,
+        system=Depends(get_rag_system_dependency)
+):
+    """
+    流式问答接口 - 异步版本
+    """
+    # 检查知识库是否已加载
+    if not system.knowledge_base_loaded:
+        raise HTTPException(
+            status_code=status.HTTP_412_PRECONDITION_FAILED,
+            detail="知识库未加载，请先调用 /api/knowledge-base/build 接口"
+        )
 
-# 系统状态 - 改为同步
+    # 简单验证
+    if not request.question or len(request.question.strip()) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="问题不能为空"
+        )
+
+    if len(request.question) > 1000:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="问题太长（最多1000字符）"
+        )
+
+    try:
+        # 获取检索到的文档
+        import concurrent.futures
+
+        def sync_retrieve():
+            relevant_docs, analysis = system.query_router.route_query(
+                request.question,
+                system.config.top_k
+            )
+            return relevant_docs, analysis
+
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(sync_retrieve)
+            relevant_docs, analysis = future.result()
+
+        # 异步生成流式响应
+        async def generate():
+            try:
+                # 使用线程池执行同步的流式生成
+                def sync_stream():
+                    for chunk in system.generation_module.generate_adaptive_answer_stream(
+                            request.question, relevant_docs
+                    ):
+                        yield chunk
+
+                for chunk in sync_stream():
+                    yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+
+                yield f"data: {json.dumps({'done': True})}\n\n"
+
+            except Exception as e:
+                logger.error(f"流式生成失败: {e}")
+                error_msg = json.dumps({"error": f"流式生成失败: {str(e)}"})
+                yield f"data: {error_msg}\n\n"
+
+        return StreamingResponse(
+            generate(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"  # 禁用Nginx缓冲
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"流式问答失败: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"流式问答失败: {str(e)}"
+        )
+
+
+# 系统状态 - 改为异步
 @router.get("/system/status")
-def get_system_status(system=Depends(get_rag_system_dependency)):
+async def get_system_status(system=Depends(get_rag_system_dependency)):
     """获取系统状态"""
-    # 直接返回系统的一些基本信息
     return {
         "success": True,
         "data": {
@@ -209,14 +302,12 @@ def get_system_status(system=Depends(get_rag_system_dependency)):
     }
 
 
-# 重新加载 - 改为同步
+# 重新加载 - 改为异步
 @router.post("/system/reload")
-def reload_system():
+async def reload_system():
     """重新加载系统"""
     try:
-        cleanup_rag_system()
-
-        # 依赖项会自动重新初始化
+        await cleanup_rag_system()  # 异步清理
         return {
             "success": True,
             "message": "系统已重新加载（知识库需要重新构建）"
@@ -228,9 +319,9 @@ def reload_system():
         )
 
 
-# 删除知识库（慎用）
+# 删除知识库（慎用）- 改为异步
 @router.delete("/knowledge-base")
-def delete_knowledge_base(system=Depends(get_rag_system_dependency)):
+async def delete_knowledge_base(system=Depends(get_rag_system_dependency)):
     """删除Milvus中的知识库集合"""
     try:
         if system.index_module and hasattr(system.index_module, 'delete_collection'):

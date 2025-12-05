@@ -1,3 +1,4 @@
+
 import axios from 'axios';
 import type {
   KnowledgeBaseStatus,
@@ -57,16 +58,22 @@ export const api = {
     onError: (error: Error) => void
   ): Promise<void> => {
     try {
-      const response = await fetch(`${API_BASE_URL}/ask`, {
+      // 修改这里：使用新的流式接口 /api/ask/stream
+      const response = await fetch(`${API_BASE_URL}/ask/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ ...request, stream: true }),
+        body: JSON.stringify({
+          question: request.question,
+          stream: true,
+          explain: request.explain || false
+        }),
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
       }
 
       const reader = response.body?.getReader();
@@ -80,23 +87,38 @@ export const api = {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value, { stream: true });
+        const chunk = decoder.decode(value);
         const lines = chunk.split('\n');
 
         for (const line of lines) {
+          if (line.trim() === '') continue;
+          
           if (line.startsWith('data: ')) {
             const data = line.slice(6);
-            if (data === '[DONE]') {
-              onComplete();
-              return;
-            }
+            
+            if (data.trim() === '') continue;
+            
             try {
               const parsed = JSON.parse(data);
-              if (parsed.content) {
-                onChunk(parsed.content);
+              
+              if (parsed.done) {
+                onComplete();
+                return;
               }
+              
+              if (parsed.chunk) {
+                onChunk(parsed.chunk);
+              }
+              
+              if (parsed.error) {
+                throw new Error(parsed.error);
+              }
+              
             } catch (e) {
-              onChunk(data);
+              // 如果不是JSON，直接作为文本处理
+              if (data !== '[DONE]') {
+                onChunk(data);
+              }
             }
           }
         }

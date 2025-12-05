@@ -103,23 +103,23 @@ export default function KnowledgeBasePanel({
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div className="flex justify-between">
                   <span className="text-primary-700">菜谱:</span>
-                  <span className="font-semibold text-primary-900">{status.stats.recipes}</span>
+                  <span className="font-semibold text-primary-900">{status.stats.total_recipes}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-primary-700">食材:</span>
-                  <span className="font-semibold text-primary-900">{status.stats.ingredients}</span>
+                  <span className="font-semibold text-primary-900">{status.stats.total_ingredients}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-primary-700">步骤:</span>
-                  <span className="font-semibold text-primary-900">{status.stats.cooking_steps}</span>
+                  <span className="font-semibold text-primary-900">{status.stats.total_cooking_steps}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-primary-700">文档:</span>
-                  <span className="font-semibold text-primary-900">{status.stats.documents}</span>
+                  <span className="font-semibold text-primary-900">{status.stats.total_documents}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-primary-700">分块:</span>
-                  <span className="font-semibold text-primary-900">{status.stats.chunks}</span>
+                  <span className="font-semibold text-primary-900">{status.stats.total_chunks}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-primary-700">向量:</span>

@@ -1,12 +1,11 @@
-
-# main.py
+# main.py - 已基本正确，保持原样
 """
-FastAPI主应用 - 同步版本（但保持lifespan异步）
+FastAPI主应用 - 异步版本
 """
 import os
 import sys
 import logging
-from contextlib import asynccontextmanager  # 使用异步上下文管理器
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
@@ -26,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """应用生命周期管理 - 必须保持异步"""
+    """应用生命周期管理 - 异步版本"""
     # 启动时
     logger.info("🚀 启动图RAG API服务...")
     logger.info("⚠️  注意：系统启动后需要手动构建知识库")
@@ -35,7 +34,7 @@ async def lifespan(app: FastAPI):
 
     # 关闭时
     logger.info("🛑 关闭API服务...")
-    cleanup_rag_system()
+    await cleanup_rag_system()  # 改为异步清理
     logger.info("✅ 服务已关闭")
 
 
@@ -44,7 +43,7 @@ app = FastAPI(
     title="图RAG烹饪助手API",
     description="基于图RAG的智能烹饪问答系统（手动构建知识库版本）",
     version="2.0.0",
-    lifespan=lifespan  # 使用异步的lifespan
+    lifespan=lifespan
 )
 
 # CORS配置
@@ -62,14 +61,14 @@ from api.rag_router import router
 app.include_router(router)
 
 
-# 根路径 - 使用同步函数
+# 根路径 - 改为异步函数
 @app.get("/")
-def root():
+async def root():
     """API首页"""
     return {
         "service": "图RAG烹饪助手API v2.0",
         "version": "2.0.0",
-        "description": "手动构建知识库版本",
+        "description": "异步版本",
         "important": "⚠️ 启动后需要先构建知识库才能使用问答功能",
         "endpoints": {
             "系统状态": "/api/system/status",

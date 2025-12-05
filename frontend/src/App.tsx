@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { Toaster } from 'react-hot-toast';
 import Sidebar from './components/Sidebar';
@@ -81,7 +82,7 @@ function App() {
             setMessages(prev =>
               prev.map(msg =>
                 msg.id === assistantMessage.id
-                  ? { ...msg, content: '抱歉，回答生成过程中出现错误。', isStreaming: false }
+                  ? { ...msg, content: `抱歉，回答生成过程中出现错误：${error.message}`, isStreaming: false }
                   : msg
               )
             );
@@ -111,7 +112,7 @@ function App() {
           msg.id === assistantMessage.id
             ? {
                 ...msg,
-                content: error.response?.data?.detail || '抱歉，发送消息失败。请确保知识库已加载。',
+                content: error.response?.data?.detail || error.message || '抱歉，发送消息失败。请确保知识库已加载。',
                 isStreaming: false
               }
             : msg

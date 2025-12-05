@@ -11,11 +11,11 @@ export interface KnowledgeBaseStatus {
   system_ready: boolean;
   milvus_collection_exists: boolean;
   stats?: {
-    recipes: number;
-    ingredients: number;
-    cooking_steps: number;
-    documents: number;
-    chunks: number;
+    total_recipes: number;
+    total_ingredients: number;
+    total_cooking_steps: number;
+    total_documents: number;
+    total_chunks: number;
     milvus_records: number;
     categories?: Record<string, number>;
   };
