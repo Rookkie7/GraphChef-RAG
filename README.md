@@ -4,7 +4,12 @@
 
 ## 项目简介
 
-GraphChef RAG 是一个基于图数据库的智能检索增强生成（RAG）系统，专注于烹饪领域的知识问答。项目创新性地将传统 RAG 与图数据库技术深度融合，实现了从简单文档检索到复杂关系推理的智能升级。
+本项目在Datawhale社区all-in-rag项目提供的图RAG实践基础上添加前后端系统，优化RAG方案而来。GraphChef RAG 是一个基于图数据库的智能检索增强生成（RAG）系统，专注于烹饪领域的知识问答。项目创新性地将传统 RAG 与图数据库技术深度融合，实现了从简单文档检索到复杂关系推理的智能升级。
+
+## 项目完整演示截图
+
+![项目主页](images/Project_DENO.png)
+
 
 ## 核心特性
 
@@ -250,69 +255,6 @@ async def generate_stream():
     yield f"data: {json.dumps({'done': True})}\n\n"
 ```
 
-## 关键技术实现
-
-### 1. 图索引键值对结构
-
-**设计思想：** 借鉴 LightRAG 的索引机制，每个实体和关系都有对应的键值对
-
-**实体键值对：**
-```python
-EntityKeyValue:
-    - entity_name: 实体名称（唯一索引键）
-    - index_keys: [实体名称]
-    - value_content: 详细描述内容
-    - entity_type: Recipe/Ingredient/CookingStep
-```
-
-**关系键值对：**
-```python
-RelationKeyValue:
-    - relation_id: 关系ID
-    - index_keys: [关系类型, 主题词, ...]
-    - value_content: 关系描述
-    - source_entity, target_entity: 关联实体
-```
-
-### 2. RRF（Reciprocal Rank Fusion）重排算法
-
-**公式：** `RRF_score = 1 / (k + rank + 1)`
-
-**实现：**
-```python
-def rrf_rerank(vector_docs, bm25_docs, k=60):
-    doc_scores = {}
-    # 累加不同检索源的 RRF 分数
-    for rank, doc in enumerate(vector_docs):
-        doc_scores[doc_id] += 1.0 / (k + rank + 1)
-    for rank, doc in enumerate(bm25_docs):
-        doc_scores[doc_id] += 1.0 / (k + rank + 1)
-    # 按总分排序
-    return sorted(doc_scores, reverse=True)
-```
-
-### 3. 异步架构设计
-
-**FastAPI 异步处理：**
-- 所有 API 端点使用 `async def`
-- 同步操作（如图查询）使用 `ThreadPoolExecutor` 包装
-- 避免阻塞事件循环
-
-```python
-async def ask_question(request: QuestionRequest):
-    with ThreadPoolExecutor() as executor:
-        future = executor.submit(sync_query_operation)
-        result = future.result()
-    return result
-```
-
-### 4. 知识库管理机制
-
-**设计特点：**
-- 手动构建/加载知识库（避免启动时长时间阻塞）
-- 支持增量更新
-- Milvus 集合持久化
-- 状态查询接口（实时统计）
 
 ## API 接口设计
 
@@ -330,87 +272,6 @@ async def ask_question(request: QuestionRequest):
 | `/api/system/status` | GET | 获取系统状态 |
 | `/api/system/reload` | POST | 重新加载系统 |
 
-### 请求示例
-
-**问答请求：**
-```json
-POST /api/ask
-{
-  "question": "鸡肉配什么蔬菜好？",
-  "stream": false,
-  "explain": true
-}
-```
-
-**响应：**
-```json
-{
-  "success": true,
-  "data": {
-    "answer": "...",
-    "processing_time": 1.23,
-    "analysis": {
-      "strategy": "graph_rag",
-      "complexity": 0.6,
-      "confidence": 0.85
-    }
-  }
-}
-```
-
-## 数据流程
-
-### 问答完整流程
-
-```
-用户提问
-    │
-    ▼
-查询路由分析（LLM）
-    │
-    ├─→ 传统检索路径
-    │   ├─ 实体级检索（图索引）
-    │   ├─ 主题级检索（关系索引）
-    │   ├─ 向量检索（Milvus）
-    │   └─ Round-robin 合并
-    │
-    └─→ 图 RAG 路径
-        ├─ 查询意图理解
-        ├─ 多跳图遍历（Neo4j）
-        ├─ 知识子图提取
-        └─ 图结构推理
-    │
-    ▼
-结果融合与排序
-    │
-    ▼
-LLM 生成回答
-    │
-    ▼
-流式/非流式输出
-```
-
-## 性能优化
-
-1. **图查询优化**
-   - 使用 Cypher 索引
-   - 限制遍历深度（1-3 跳）
-   - 结果数量限制（max_nodes=50）
-
-2. **向量检索优化**
-   - HNSW 索引算法
-   - COSINE 相似度度量
-   - 批量嵌入生成（batch_size=100）
-
-3. **缓存机制**
-   - 图结构索引缓存
-   - 实体和关系映射缓存
-   - Milvus 集合持久化
-
-4. **并发处理**
-   - FastAPI 异步架构
-   - 线程池处理同步操作
-   - 流式生成非阻塞
 
 ## 技术亮点总结
 
@@ -541,41 +402,16 @@ frontend/
 └── package.json                # 前端依赖
 ```
 
-## 性能指标
-
-- **查询响应时间**：平均 1-3 秒
-- **知识库构建时间**：约 2-5 分钟（取决于数据规模）
-- **向量维度**：512 维（BGE-small-zh-v1.5）
-- **图遍历深度**：1-3 跳
-- **并发支持**：FastAPI 异步，支持多用户并发
-
-## 未来优化方向
-
-1. **检索性能**
-   - 引入 GPU 加速向量检索
-   - 实现分布式图查询
-   - 增加缓存层（Redis）
-
-2. **检索质量**
-   - 融合更多检索策略（如 GraphRAG 的 global search）
-   - 引入 Reranker 模型
-   - 实现用户反馈学习
-
-3. **系统功能**
-   - 支持多模态（图片、视频）
-   - 实现对话历史管理
-   - 添加用户个性化推荐
-
 ## 联系方式
 
-- 作者：[您的姓名]
-- 邮箱：[您的邮箱]
-- GitHub：[项目链接]
+- 作者：[霍奕铭]
+- 邮箱：[2016668220@qq.com]
 
-## 许可证
+## 致谢
+感谢Datawhale开源社区提供的教程以及实践
 
-[根据实际情况填写]
+感谢 Neo4j 和 Milvus 提供的优秀数据库产品
 
----
+感谢 INTERN AI 提供的LLM服务
 
-**备注：** 本项目作为实习作品，展示了对图数据库、向量检索、RAG 架构、异步编程等多项技术的综合应用能力。
+感谢所有开源社区的贡献者
